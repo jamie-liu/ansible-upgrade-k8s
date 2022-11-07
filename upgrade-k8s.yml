@@ -1,0 +1,14 @@
+---
+- name: 0.upgrade control plane
+  gather_facts: false
+  hosts: master
+  roles:
+    - master
+  tags: master
+
+- name: 1.upgrade kubelet
+  gather_facts: false
+  hosts: master node
+  roles:
+    - kubelet
+  tags: kubelet

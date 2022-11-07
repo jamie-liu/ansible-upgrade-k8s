@@ -1,0 +1,92 @@
+;---
+- name: backup kubernetes 1.16 manifest
+  shell: cp -r /etc/kubernetes/manifests/ /tmp/backup/
+
+- name: upgrade kube-apiserver to 1.20
+  template:
+    src: kube-apiserver.yaml.j2
+    dest: /etc/kubernetes/manifests/kube-apiserver.yaml
+
+- name: wait for the new pod
+  wait_for:
+    port: 6443
+    delay: 10
+    state: drained
+
+- name: upgrade kube-controller and kube-scheduler to 1.20
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - {"src":"kube-controller-manager.yaml.j2","dest":"/etc/kubernetes/manifests/kube-controller-manager.yaml"}
+    - {"src":"kube-scheduler.yaml.j2","dest":"/etc/kubernetes/manifests/kube-scheduler.yaml"}
+
+- name: copy 1.20 config files
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - {"src":"kubeadm-rbac.yaml","dest":"/opt/kubeadm-rbac.yaml"}
+    - {"src":"kubelet-config-1.20.yaml","dest":"/opt/kubelet-config-1.20.yaml"}
+  when:
+    - ( master0 == ansible_default_ipv4.address )
+
+- name: create kubelet-config-1.20 configmap
+  shell: kubectl apply -f /opt/kubelet-config-1.20.yaml
+  when:
+    - ( master0 == ansible_default_ipv4.address )
+
+- name: create kubeadm RBAC
+  shell: kubectl apply -f /opt/kubeadm-rbac.yaml
+  when:
+    - ( master0 == ansible_default_ipv4.address )
+
+- name: update kubernete version to 1.20.8
+  shell: kubectl get cm kubeadm-config -n kube-system -o yaml | sed 's/v1.16.8/v1.20.8/' | kubectl apply -f -
+  when:
+    - ( master0 == ansible_default_ipv4.address )
+
+- name: update kube-proxy mode to ipvs
+  shell: kubectl get cm kube-proxy -n kube-system -o yaml | sed 's/mode: ""/mode: "ipvs"/' | kubectl apply -f -
+  when:
+    - ( master0 == ansible_default_ipv4.address )
+
+- name: copy kube-proxy and coredns
+  template:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - {"src":"kube-proxy.yaml.j2","dest":"/opt/kube-proxy.yaml"}
+    - {"src":"coredns.yaml.j2","dest":"/opt/coredns.yaml"}
+  when:
+    - ( master0 == ansible_default_ipv4.address )
+
+- name: upgrade kube-proxy to 1.20 and change to ipvs mode
+  shell: kubectl apply -f /opt/kube-proxy.yaml
+  when:
+    - ( master0 == ansible_default_ipv4.address )
+
+- name: upgrade coredns
+  shell: kubectl apply -f /opt/coredns.yaml
+  when:
+    - ( master0 == ansible_default_ipv4.address )
+
+- name: update service port and servicemonitor
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+  with_items:
+    - {"src":"kube-controller-svc.yaml","dest":"/opt/kube-controller-svc.yaml"}
+    - {"src":"kube-scheduler-svc.yaml","dest":"/opt/kube-scheduler-svc.yaml"}
+  when:
+    - ( master0 == ansible_default_ipv4.address )
+
+- name: upgrade kube-controller-manager service port and servicemonitor
+  shell: kubectl apply -f /opt/kube-controller-svc.yaml
+  when:
+    - ( master0 == ansible_default_ipv4.address )
+
+- name: upgrade kube-scheduler service port and servicemonitor
+  shell: kubectl apply -f /opt/kube-scheduler-svc.yaml
+  when:
+    - ( master0 == ansible_default_ipv4.address )

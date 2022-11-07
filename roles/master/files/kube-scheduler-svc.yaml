@@ -1,0 +1,41 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    k8s-app: kube-scheduler
+  name: kube-scheduler
+  namespace: kube-system
+spec:
+  clusterIP: None
+  ports:
+  - name: http-metrics
+    port: 10259
+    protocol: TCP
+    targetPort: 10259
+  selector:
+    component: kube-scheduler
+  sessionAffinity: None
+  type: ClusterIP
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  labels:
+    k8s-app: kube-scheduler
+  name: kube-scheduler
+  namespace: monitoring
+spec:
+  endpoints:
+    - bearTokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+      port: http-metrics
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
+  jobLabel: k8s-app
+  namespaceSelector:
+    matchNames:
+      - kube-system
+  selector:
+    matchLabels:
+      k8s-app: kube-scheduler
